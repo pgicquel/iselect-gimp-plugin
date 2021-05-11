@@ -16,17 +16,17 @@ def gimp_to_npy(image):
     _, x1, y1, x2, y2 = pdb.gimp_selection_bounds(image)
     width = x2 - x1
     height = y2 - y1
-    #enlarging the image a bit
-    x1 = x1 - min(x1 - 0, width // 10)
-    x2 = x2 + min(image.width - x2, width // 10)
-    y1 = y1 - min(y1 - 0, height // 10)
-    y2 = y2 + min(image.height - y2, height // 10)
+    # Enlarging the selected image a bit
+    x1 = x1 - min(x1 - 0, width // 20)
+    x2 = x2 + min(image.width - x2, width // 20)
+    y1 = y1 - min(y1 - 0, height // 20)
+    y2 = y2 + min(image.height - y2, height // 20)
     width = x2 - x1
     height = y2 - y1
-    print("width rect", width, "height rect", height)
+
     layer = image.active_layer
     region = layer.get_pixel_rgn(x1, y1, width, height, False)
-    pixChars = region[:, :]  # Take whole layer
+    pixChars = region[:, :]
     img_array = np.frombuffer(pixChars, dtype=np.uint8).reshape(region.h, region.w, region.bpp)
     img_array = convert_to_rgb(img_array, image)
     coordinates = {'x1': x1, 'y1': y1, 'x2': x2, 'y2':y2}
@@ -65,27 +65,18 @@ def poolnet_inference(image, use_gpu):
     return pred
 
 def update_selection(image, result, coordinates):
+    mask = np.zeros((image.height, image.width))
     x1, y1, x2, y2 = coordinates['x1'], coordinates['y1'], coordinates['x2'], coordinates['y2']
-    if image.base_type == RGB_IMAGE:
-        channel_num = 3
-    else:
-        channel_num = 1
-    mask = np.zeros((image.height, image.width, channel_num))
-    for i in range(channel_num):
-        mask[y1:y2, x1:x2, i] = (result >= 0.5) * 255
-
+    result[result > 1.0] = 1.0
+    result[result < 0.0] = 0.0
+    result[result < 0.3] = 0.0
+    mask[y1:y2, x1:x2] = result * 255
     rlBytes = np.uint8(mask).tobytes()
-    rl = gimp.Layer(image, 'mask', image.width, image.height, image.base_type, 100,
-                    NORMAL_MODE)
-    region = rl.get_pixel_rgn(0, 0, rl.width, rl.height, True)
+    selection_mask = image.selection
+    region = selection_mask.get_pixel_rgn(0, 0, selection_mask.width, selection_mask.height, True) #True means replace in region
     region[:, :] = rlBytes
-
-    pdb.gimp_image_add_layer(image, rl, image.active_layer.type)
-
-    pdb.gimp_image_select_color(image, CHANNEL_OP_REPLACE, rl, gimpcolor.RGB(0,0,0))
-    pdb.gimp_image_remove_layer(image,rl)
+    image.add_layer_mask(image.active_layer, selection_mask)
     pdb.gimp_selection_feather(image, 2.0)
-    gimp.displays_flush()
 
 def iselect(imggimp, use_gpu):
     if imggimp.base_type == INDEXED:
@@ -101,15 +92,14 @@ def iselect(imggimp, use_gpu):
     resize_factor = 1.0
     if min(width_rect, height_rect) < 128:
         resize_factor = 128.0 / min(width_rect, height_rect)
-    elif width_rect * height_rect > 512:
+    elif width_rect * height_rect > 512 * 512:
         resize_factor = 512.0 / max(width_rect, height_rect)  
     if resize_factor != 1.0:
-        selected_img = cv2.resize(selected_img, None, fx=resize_factor, fy=resize_factor, interpolation=cv2.INTER_AREA)
+        selected_img = cv2.resize(selected_img, None, fx=resize_factor, fy=resize_factor)
     
     pred = poolnet_inference(selected_img, use_gpu)
 
     if resize_factor != 1.0:
-        print("rezize")
         pred = cv2.resize(pred, (width_rect, height_rect))
 
     update_selection(imggimp, pred, coordinates)

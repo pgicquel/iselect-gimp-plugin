@@ -69,23 +69,24 @@ def update_selection(image, result, coordinates):
     x1, y1, x2, y2 = coordinates['x1'], coordinates['y1'], coordinates['x2'], coordinates['y2']
     result[result > 1.0] = 1.0
     result[result < 0.0] = 0.0
-    result[result < 0.3] = 0.0
+    result[result < 0.2] = 0.0
     mask[y1:y2, x1:x2] = result * 255
     rlBytes = np.uint8(mask).tobytes()
     selection_mask = image.selection
     region = selection_mask.get_pixel_rgn(0, 0, selection_mask.width, selection_mask.height, True) #True means replace in region
     region[:, :] = rlBytes
-    image.add_layer_mask(image.active_layer, selection_mask)
     pdb.gimp_selection_feather(image, 2.0)
 
-def iselect(imggimp, use_gpu):
+def iselect(imggimp):
+    use_gpu = False
     if imggimp.base_type == INDEXED:
         pdb.gimp_message("Doesn't work with INDEXED color space, please go in RGB mode by selecting Image > Mode > RGB")
         return
-    if torch.cuda.is_available() and use_gpu:
-        gimp.progress_init("(Using GPU) Running intelligent-select for " + imggimp.name + "...")
+    if torch.cuda.is_available():
+        use_gpu = True
+        gimp.progress_init("(Using GPU) Running Intelligent Select for " + imggimp.name + "...")
     else:
-        gimp.progress_init("(Using CPU) Running intelligent-select for " + imggimp.name + "...")
+        gimp.progress_init("(Using CPU) Running Intelligent Select for " + imggimp.name + "...")
     
     selected_img, coordinates, width_rect, height_rect = gimp_to_npy(imggimp)
 
@@ -107,15 +108,14 @@ def iselect(imggimp, use_gpu):
 register(
     "intelligent-select",
     "Intelligent Select",
-    "Running image segmentation.",
+    "Execute image segmentation in the selected area.",
     "Paul Gicquel",
-    "Your",
+    "Open Source",
     "2021",
     "Intelligent Select",
-    "*",  # Alternately use RGB, RGB*, GRAY*, INDEXED etc.
+    "RGB, RGB*, GRAY, GRAY*",  # Alternately use RGB, RGB*, GRAY*, INDEXED etc.
     [
      (PF_IMAGE, "image", "Input image", None),
-     (PF_BOOL, "ugpu", "Use GPU", False),
      ],
     [],
     iselect, menu="<Image>/Select")

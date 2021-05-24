@@ -1,3 +1,5 @@
+Old repository, see https://gitlab.com/pgicquel1/iselect-gimp-plugin for current repository.
+
 # iselect-gimp-plugin
 
 ## Presentation
